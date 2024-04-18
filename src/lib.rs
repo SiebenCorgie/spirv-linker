@@ -480,11 +480,11 @@ struct DefUseAnalyzer<'a> {
     def_ids: HashMap<u32, usize>,
     use_ids: HashMap<u32, Vec<usize>>,
     use_result_type_ids: HashMap<u32, Vec<usize>>,
-    instructions: &'a mut [rspirv::dr::Instruction]
+    instructions: &'a mut [rspirv::dr::Instruction],
 }
 
 impl<'a> DefUseAnalyzer<'a> {
-    fn new(instructions: &'a mut [rspirv::dr::Instruction]) -> Self{
+    fn new(instructions: &'a mut [rspirv::dr::Instruction]) -> Self {
         let mut def_ids = HashMap::new();
         let mut use_ids: HashMap<u32, Vec<usize>> = HashMap::new();
         let mut use_result_type_ids: HashMap<u32, Vec<usize>> = HashMap::new();
@@ -528,7 +528,7 @@ impl<'a> DefUseAnalyzer<'a> {
             def_ids,
             use_ids,
             use_result_type_ids,
-            instructions
+            instructions,
         }
     }
 
@@ -541,8 +541,10 @@ impl<'a> DefUseAnalyzer<'a> {
         (idx, &self.instructions[idx])
     }
 
-    fn for_each_use<F>(&mut self, id: u32, mut f: F) 
-    where F: FnMut(&mut rspirv::dr::Instruction) {
+    fn for_each_use<F>(&mut self, id: u32, mut f: F)
+    where
+        F: FnMut(&mut rspirv::dr::Instruction),
+    {
         // find by `result_type`
         if let Some(use_result_type_id) = self.use_result_type_ids.get(&id) {
             for inst_idx in use_result_type_id {
@@ -759,11 +761,11 @@ fn trans_scalar_type(inst: &rspirv::dr::Instruction) -> Option<ScalarType> {
         },
         spirv::Op::TypeInt => ScalarType::Int {
             width: match inst.operands[0] {
-                rspirv::dr::Operand::LiteralInt32(w) => w,
+                rspirv::dr::Operand::LiteralBit32(w) => w,
                 _ => panic!("Unexpected operand while parsing type"),
             },
             signed: match inst.operands[1] {
-                rspirv::dr::Operand::LiteralInt32(s) => {
+                rspirv::dr::Operand::LiteralBit32(s) => {
                     if s == 0 {
                         false
                     } else {
@@ -775,7 +777,7 @@ fn trans_scalar_type(inst: &rspirv::dr::Instruction) -> Option<ScalarType> {
         },
         spirv::Op::TypeFloat => ScalarType::Float {
             width: match inst.operands[0] {
-                rspirv::dr::Operand::LiteralInt32(w) => w,
+                rspirv::dr::Operand::LiteralBit32(w) => w,
                 _ => panic!("Unexpected operand while parsing type"),
             },
         },
@@ -810,6 +812,7 @@ enum AggregateType {
         format: spirv::ImageFormat,
         access: Option<spirv::AccessQualifier>,
     },
+    #[allow(unused)]
     SampledImage {
         ty: Box<AggregateType>,
     },
@@ -829,15 +832,15 @@ fn op_def(def: &DefAnalyzer, operand: &rspirv::dr::Operand) -> rspirv::dr::Instr
 
 fn extract_literal_int_as_u64(op: &rspirv::dr::Operand) -> u64 {
     match op {
-        rspirv::dr::Operand::LiteralInt32(v) => (*v).into(),
-        rspirv::dr::Operand::LiteralInt64(v) => *v,
+        rspirv::dr::Operand::LiteralBit32(v) => (*v).into(),
+        rspirv::dr::Operand::LiteralBit64(v) => *v,
         _ => panic!("Unexpected literal int"),
     }
 }
 
 fn extract_literal_u32(op: &rspirv::dr::Operand) -> u32 {
     match op {
-        rspirv::dr::Operand::LiteralInt32(v) => *v,
+        rspirv::dr::Operand::LiteralBit32(v) => *v,
         _ => panic!("Unexpected literal u32"),
     }
 }
@@ -977,14 +980,16 @@ pub fn link(inputs: &mut [&mut rspirv::dr::Module], opts: &Options) -> Result<rs
     let bound = compact_ids(&mut output);
     output.header = Some(rspirv::dr::ModuleHeader::new(bound));
 
-    output.debug_module_processed.push(rspirv::dr::Instruction::new(
-        spirv::Op::ModuleProcessed,
-        None,
-        None,
-        vec![rspirv::dr::Operand::LiteralString(
-            "Linked by rspirv-linker".to_string(),
-        )],
-    ));
+    output
+        .debug_module_processed
+        .push(rspirv::dr::Instruction::new(
+            spirv::Op::ModuleProcessed,
+            None,
+            None,
+            vec![rspirv::dr::Operand::LiteralString(
+                "Linked by rspirv-linker".to_string(),
+            )],
+        ));
 
     // output the module
     Ok(output)
