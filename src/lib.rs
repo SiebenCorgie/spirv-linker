@@ -91,22 +91,30 @@ fn remove_duplicate_capablities(module: &mut rspirv::dr::Module) {
     module.capabilities = caps;
 }
 
-fn remove_duplicate_ext_inst_imports(module: &mut rspirv::dr::Module) {
-    let mut set = HashSet::new();
+fn remove_duplicate_ext_inst_imports(module: &mut rspirv::dr::Module) -> HashMap<u32, u32> {
+    let mut set: HashMap<&String, u32> = HashMap::new();
+    let mut mapping = HashMap::new();
     let mut caps = vec![];
 
     for c in &module.ext_inst_imports {
-        let keep = match &c.operands[0] {
-            rspirv::dr::Operand::LiteralString(ext_inst_import) => set.insert(ext_inst_import),
-            _ => true,
+        match &c.operands[0] {
+            rspirv::dr::Operand::LiteralString(ext_inst_import) => {
+                if let Some(known) = set.get(ext_inst_import) {
+                    mapping.insert(c.result_id.unwrap(), *known);
+                } else {
+                    //is new, add to known set and caps
+                    assert!(set.insert(ext_inst_import, c.result_id.unwrap()).is_none());
+                    caps.push(c.clone());
+                }
+            }
+            _ => {
+                //is _something else, always add that
+                caps.push(c.clone());
+            }
         };
-
-        if keep {
-            caps.push(c.clone());
-        }
     }
-
     module.ext_inst_imports = caps;
+    mapping
 }
 
 fn kill_with_id(insts: &mut Vec<rspirv::dr::Instruction>, id: u32) {
@@ -959,7 +967,11 @@ pub fn link(inputs: &mut [&mut rspirv::dr::Module], opts: &Options) -> Result<rs
 
     // remove duplicates (https://github.com/KhronosGroup/SPIRV-Tools/blob/e7866de4b1dc2a7e8672867caeb0bdca49f458d3/source/opt/remove_duplicates_pass.cpp)
     remove_duplicate_capablities(&mut output);
-    remove_duplicate_ext_inst_imports(&mut output);
+    let remapped_ext_insts = remove_duplicate_ext_inst_imports(&mut output);
+    for (oldid, newid) in remapped_ext_insts {
+        replace_all_uses_with(&mut output, oldid, newid);
+    }
+
     let mut output = remove_duplicate_types(output);
     // jb-todo: strip identical OpDecoration / OpDecorationGroups
 
